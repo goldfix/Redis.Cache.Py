@@ -17,12 +17,12 @@ class MyClass(object):
     
     def Test1(self):
         
-        p = redis.StrictRedis("192.168.1.51", db=0)
+        p = redis.StrictRedis("127.0.0.1", db=0)
         
         p = p.pipeline()
         
         
-        for i in range(0, 1000):
+        for i in range(0, 10):
             k = uuid.uuid4()
             v = str( k ) + "---" + datetime.datetime.now().strftime("%Y%m%dT%H%M%SZ%f")
             
@@ -30,10 +30,10 @@ class MyClass(object):
             p.append(k, v)
             print( "K: " + str(i) + "/1000: " + str(k))
         
-        for z in range(0, 1000):
+        for z in range(0, 10):
             k = uuid.uuid4()
             print( "SET K: " + str(z) + "/1000: " + str(k))
-            for i in range(0, 1000):
+            for i in range(0, 10):
                 v = str( k ) + str(uuid.uuid4()) + "---" + datetime.datetime.now().strftime("%Y%m%dT%H%M%SZ%f")
                 p.sadd(k, v)
                 pass
@@ -46,11 +46,11 @@ class MyClass(object):
     
     def Test2(self):
         
-        r = redis.StrictRedis("192.168.1.51")
+        r = redis.StrictRedis("127.0.0.1", db=0)
         ks = r.keys()
         
         for k in ks:
-            if(r.type(k) != b"string") and (r.scard(k)>999):
+            if(r.type(k) != b"string") and (r.scard(k)>2):
                 print( r.scard(k) )
             #print( k )
             pass
@@ -61,12 +61,12 @@ class MyClass(object):
     
     def Test3(self):
         
-        r = redis.StrictRedis("192.168.1.51")
+        r = redis.StrictRedis("127.0.0.1")
         print (r.info()["redis_version"])
         
         pass
     
-x = MyClass().Test1()
+x = MyClass().Test2()
 
 
 
