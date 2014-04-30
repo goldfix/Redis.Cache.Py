@@ -1,5 +1,5 @@
 Redis.Cache.Py license information
-===============================
+==================================
 
 Redis.Cache.Py is open source software released under the terms of the three clause BSD license. Most of the Redis.Cache.Py source code was written and is copyrighted by Pietro Partescano. A list of other contributors can be found in the git history.
 
