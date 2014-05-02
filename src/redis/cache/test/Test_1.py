@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*- 
 '''
 Copyright (c) 2014, pietro partescano
 All rights reserved.
@@ -29,15 +30,14 @@ import redis
 import uuid
 import datetime
 
+from unittest.case import TestCase
 
-
-
-class MyClass(object):
+class MyUnitTest(TestCase):
 
     def __init__(self):
         pass
     
-    def Test1(self):
+    def LoadData_Test_1(self):
         
         p = redis.StrictRedis("127.0.0.1", db=0)
         
@@ -66,7 +66,7 @@ class MyClass(object):
         print( "END" )
         pass
     
-    def Test2(self):
+    def LoadData_Test_2(self):
         
         r = redis.StrictRedis("127.0.0.1", db=0)
         ks = r.keys()
@@ -81,14 +81,41 @@ class MyClass(object):
         
         pass
     
-    def Test3(self):
+    def LoadData_Test_3(self):
         
         r = redis.StrictRedis("127.0.0.1")
         print (r.info()["redis_version"])
         
         pass
     
-x = MyClass().Test2()
+    
+    def CSharpTest(self):
+        r = redis.StrictRedis("127.0.0.1")
+
+        result = r.lrange("k_string", 0, 1)
+        self.assertTrue(result[1] == "Test 1234567890 Test 0987654321 Test 1234567890 Test 0987654321 Test 1234567890 Test 0987654321 メンズア")
+        print "assertTrue :: k_string :: OK"
+        
+        result = r.lrange("k_int16", 0, 1)
+        self.assertTrue(int( result[1]) == 12345)
+        print "assertTrue :: k_int16 :: OK"        
+        
+        result = r.lrange("k_double", 0, 1)
+        self.assertTrue( float( result[1]) == 12345.06789)
+        print "assertTrue :: k_double :: OK"        
+        
+        result = r.lrange("k_byte[]", 0, 1)
+        tmp = result[1].decode("utf-8") 
+        self.assertTrue(result[1] == "Test 1234567890 Test 0987654321 Test 1234567890 Test 0987654321 Test 1234567890 Test 0987654321 メンズア")
+        print "assertTrue :: k_byte[] :: OK"
+        
+        pass
+    
+    
+    
+# x = MyClass().LoadData_Test_1()
+# x = MyUnitTest().CSharpTest()
+
 
 
 

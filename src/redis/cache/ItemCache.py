@@ -38,7 +38,7 @@ class RedisCacheDal(object):
         
         pass
 
-class RedisCacheException(Exception):
+class RedisCacheError(Exception):
     '''
     Custom Redis.Cache Exception 
     '''
