@@ -34,6 +34,7 @@ from unittest.case import TestCase
 import zlib
 import pickle
 import gzip
+import time
 
 class MyUnitTest(TestCase):
 
@@ -207,10 +208,16 @@ class MyUnitTest(TestCase):
 # x = MyClass().LoadData_Test_1()
 # x = MyUnitTest().CSharpTest()
 # x = MyUnitTest().DeflateTest()
-x = MyUnitTest().DecodeDataFrom_C_Test()
+# x = MyUnitTest().DecodeDataFrom_C_Test()
 
 
+z = datetime.datetime.utcnow()
+zz = datetime.timedelta(hours=2, minutes=22, seconds=13)
+print str( zz).split(":")[0].zfill(2) , str( zz).split(":")[1].zfill(2), str( zz).split(":")[2].zfill(2)
 
+
+# z = str(3).zfill(2)
+# print z
 
 
 
