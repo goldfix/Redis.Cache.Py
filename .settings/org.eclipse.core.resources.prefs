@@ -1,2 +1,8 @@
 eclipse.preferences.version=1
-encoding//src/redis/cache/test/Test_1.py=utf-8
+encoding//src/redis/cache/__init__.py=utf-8
+encoding//src/redis/cache/errors.py=utf-8
+encoding//src/redis/cache/item.py=utf-8
+encoding//src/redis/cache/test/UtilityTest.py=utf-8
+encoding//src/redis/cache/test/__init__.py=utf-8
+encoding//src/redis/cache/test/test_1.py=utf-8
+encoding//src/redis/cache/utilities.py=utf-8

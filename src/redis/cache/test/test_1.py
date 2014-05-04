@@ -33,8 +33,6 @@ import datetime
 from unittest.case import TestCase
 import zlib
 import pickle
-import gzip
-import time
 
 class MyUnitTest(TestCase):
 

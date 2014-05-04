@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*- 
 '''
 Copyright (c) 2014, pietro partescano
 All rights reserved.
@@ -37,16 +38,6 @@ class RedisCacheDal(object):
         '''
         
         pass
-
-class RedisCacheError(Exception):
-    '''
-    Custom Redis.Cache Exception 
-    '''
-    def __init__(self, msg, innerException):
-        self.message = msg
-        self.innerException = innerException
-        pass
-
 
 
 
