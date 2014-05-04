@@ -31,6 +31,9 @@ import uuid
 import datetime
 
 from unittest.case import TestCase
+import zlib
+import pickle
+import gzip
 
 class MyUnitTest(TestCase):
 
@@ -88,8 +91,12 @@ class MyUnitTest(TestCase):
         
         pass
     
-    
+
     def CSharpTest(self):
+        """
+        Conversion test function from c#
+        """    
+        
         r = redis.StrictRedis("127.0.0.1")
 
         result = r.lrange("k_string", 0, 1)
@@ -111,11 +118,96 @@ class MyUnitTest(TestCase):
         
         pass
     
+
     
-    
+    def DeflateTest(self):
+
+        f = open("txt_test_long.txt", "rb")        
+        str_to_compress = f.read()
+        f.flush()
+        f.close()
+        
+#         str_to_compress = "Test 1234567890 Test 0987654321 Test 1234567890 Test 0987654321 Test 1234567890 Test 0987654321 メンズア"
+        print len(str_to_compress)
+        cmpss = zlib.compressobj(6,zlib.DEFLATED,-zlib.MAX_WBITS)
+        bytes_to_compressed = cmpss.compress(str_to_compress)
+        bytes_to_compressed += cmpss.flush()
+        print len(bytes_to_compressed)
+        
+        f = file("/tmp/out_p.bin", "wb")
+        f.write(bytes_to_compressed)
+        f.flush()
+        f.close()
+        
+        decmpss = zlib.decompressobj(-zlib.MAX_WBITS)
+        bytes_to_decompressed = decmpss.decompress(bytes_to_compressed) 
+        bytes_to_decompressed += decmpss.flush()
+        self.assertTrue(( bytes_to_decompressed==str_to_compress ))
+        
+        
+        print "test list..."        #----------------------------------------------------------------------------------------------------------------
+        
+        test_list = list()
+        for i in range(10):
+            test_list.append("Test 1234567890 Test 0987654321 Test 1234567890 Test 0987654321 Test 1234567890 Test 0987654321 メンズア -- " + str(i))
+#             print i
+        
+        
+        print "test list serialization  ..."
+        test_list_serz = pickle.dumps(test_list, pickle.HIGHEST_PROTOCOL)
+        test_list_de_serz = pickle.loads(test_list_serz)
+        self.assertListEqual(test_list, test_list_de_serz)
+        print "test list serialization : OK"
+        
+        print "test list compression  ..."
+        print len(test_list_serz)
+        cmpss = zlib.compressobj()
+        test_list_comp = cmpss.compress(test_list_serz)
+        test_list_comp += cmpss.flush()
+        print len(test_list_comp)
+
+        
+        decmpss = zlib.decompressobj()
+        test_list_decomp = decmpss.decompress(test_list_comp)
+        test_list_decomp += decmpss.flush()
+        
+        test_list_decomp = pickle.loads(test_list_decomp)
+        self.assertListEqual(test_list, test_list_decomp)
+        print "test list compression : OK"
+        
+        pass
+
+
+    def DecodeDataFrom_C_Test(self):
+        print "Load data from data c# file..."
+        f = open("/tmp/out_c.bin", "rb")        
+        bytes_to_compressed = f.read()
+        f.flush()
+        f.close()
+        print len(bytes_to_compressed)
+        
+        print "Load data from txt file..."
+        f = open("txt_test_long.txt", "rb")        
+        str_to_decompress = f.read()
+        f.flush()
+        f.close()
+        
+        print "Decompress data c# file..."
+        decmpss = zlib.decompressobj(-zlib.MAX_WBITS)
+        bytes_to_decompressed = decmpss.decompress(bytes_to_compressed) 
+        bytes_to_decompressed += decmpss.flush()
+        print len(bytes_to_decompressed)
+        
+        self.assertTrue(( bytes_to_decompressed==str_to_decompress ))
+        print "Check file: OK"
+        
+        pass
+
+
 # x = MyClass().LoadData_Test_1()
 # x = MyUnitTest().CSharpTest()
-
+# x = MyUnitTest().DeflateTest()
+x = MyUnitTest().DecodeDataFrom_C_Test()
 
 
 
