@@ -33,10 +33,35 @@ import datetime
 from unittest.case import TestCase
 import zlib
 import pickle
+from redis.cache import utilities
+from redis.cache.utilities import _SERIALIZE, _DESERIALIZE
 
 class MyUnitTest(TestCase):
 
     def __init__(self):
+        pass
+    
+    def LoadData_Test_4(self):
+        p = redis.StrictRedis("127.0.0.1", db=0)
+        
+        test_dic = dict()
+        test_dic["A"] = "V_A"
+        test_dic["B"] = "V_B"
+        test_dic["C"] = "V_C"
+        print test_dic 
+        
+        test_dic_ser = utilities._Serialize(test_dic, _SERIALIZE)
+        p.set("DIC", test_dic_ser)
+        test_dic_result = p.get("DIC")
+        
+        test_dic_result = utilities._Serialize(test_dic_result, _DESERIALIZE)
+        self.assertDictEqual(test_dic, test_dic_result)
+        
+        
+        t = "{'A': 'V_A', 'C': 'V_C', 'B': 'V_B'}"
+        print type(t)
+        t = eval(t)
+        print type(t)
         pass
     
     def LoadData_Test_1(self):
@@ -203,15 +228,16 @@ class MyUnitTest(TestCase):
         pass
 
 
-# x = MyClass().LoadData_Test_1()
+# x = MyUnitTest().LoadData_Test_1()
+x = MyUnitTest().LoadData_Test_4()
 # x = MyUnitTest().CSharpTest()
 # x = MyUnitTest().DeflateTest()
 # x = MyUnitTest().DecodeDataFrom_C_Test()
 
 
-z = datetime.datetime.utcnow()
-zz = datetime.timedelta(hours=2, minutes=22, seconds=13)
-print str( zz).split(":")[0].zfill(2) , str( zz).split(":")[1].zfill(2), str( zz).split(":")[2].zfill(2)
+# z = datetime.datetime.utcnow()
+# zz = datetime.timedelta(hours=2, minutes=22, seconds=13)
+# print str( zz).split(":")[0].zfill(2) , str( zz).split(":")[1].zfill(2), str( zz).split(":")[2].zfill(2)
 
 
 # z = str(3).zfill(2)

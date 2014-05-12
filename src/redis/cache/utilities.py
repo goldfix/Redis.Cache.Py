@@ -30,6 +30,7 @@ import zlib
 from redis.cache.errors import NotProvidedError
 import pickle
 import datetime
+from redis.cache import errors
 
 _COMPRESS = 1
 _DECOMPRESS = 2
@@ -99,6 +100,30 @@ def _TTLSerialize(ttlSLI, ttlABS, forceUpdateDtABS):
  
     return strResult
  
+def _TTL_TS_DeSerialize(ttl):       #TODO      20140512T183812|010203|20140512T214115|040506
+    
+    if(ttl is None or ttl.strip()==""):
+        raise errors.ArgumentError("Parameter is invalid (ttl)")
+    
+    dts = ttl.split("|")
+    tsSLI = _NO_EXPIRATION
+    tsABS = _NO_EXPIRATION
+    
+    if(dts[1]!=_No_TTL):
+        zz = dts[1][0:1]
+        tsSLI = datetime.timedelta(hours=int(dts[1][0:2]), minutes=int(dts[1][2:4]), seconds=int(dts[1][4:6]))
+        pass
+
+    if(dts[1]!=_No_TTL):
+        tsABS = datetime.timedelta(hours=int(dts[3][0:2]), minutes=int(dts[3][2:4]), seconds=int(dts[3][4:6]))
+        pass    
+    
+    result = (tsSLI, tsABS)
+    return result
+
+def _TTL_DT_DeSerialize(ttl):
+    
+    pass
 
 
 

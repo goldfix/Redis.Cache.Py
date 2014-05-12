@@ -43,3 +43,8 @@ class GenericError(Exception):
     
 class NotProvidedError(GenericError):
     pass
+
+class ArgumentError(GenericError):
+    pass
+
+

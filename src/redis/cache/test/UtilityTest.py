@@ -87,6 +87,13 @@ class Test(TestCase):
         print result
 
         pass
+    
+    def TTL_TS_DeSerialize_Test(self):
+        
+        result = utilities._TTL_TS_DeSerialize("20140512T183812|010203|20140512T214115|040506")
+        print result
+        
+        pass
 
 # if __name__ == "__main__":
 #     import sys;sys.argv = ['Test.CompressionTest']
@@ -95,7 +102,7 @@ class Test(TestCase):
 # p = Test().CompressionTest()
 # p = Test().SerializationTest()
 # p = Test().TTL_Test()
-
+p = Test().TTL_TS_DeSerialize_Test()
 
 
 
