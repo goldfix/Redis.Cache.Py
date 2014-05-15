@@ -67,12 +67,12 @@ class Test(TestCase):
         
         str_serialized = utilities._Serialize(str_to_serialize, _SERIALIZE)
         str_deserialized = utilities._Serialize(str_serialized, _DESERIALIZE)
-        self.assertTrue((str_to_serialize, str_deserialized ) )
+        self.assertTrue((str_to_serialize == str_deserialized ) )
         
         try:
             str_serialized = utilities._Serialize(str_to_serialize, _SERIALIZE)
             str_deserialized = utilities._Serialize(str_serialized, 5)
-            self.assertTrue((str_to_serialize, str_deserialized ) )
+            self.assertTrue((str_to_serialize == str_deserialized ) )
         except (NotProvidedError):
             print "SerializationTest :: OK"
         
@@ -92,8 +92,26 @@ class Test(TestCase):
         
         result = utilities._TTL_TS_DeSerialize("20140512T183812|010203|20140512T214115|040506")
         print result
-        
+        result = utilities._TTL_DT_DeSerialize("20140512T183812|010203|20140512T214115|040506")
+        self.assertTrue((result[0] == datetime.datetime.strptime("20140512T183812", "%Y%m%dT%H%M%S") ) )
+        self.assertTrue((result[1] == datetime.datetime.strptime("20140512T214115", "%Y%m%dT%H%M%S") ) )
+        print "TTL_TS_DeSerialize_Test : OK"
+                
         pass
+
+
+    def TTL_Is_Expired_Test(self):
+        
+        result = utilities._TTL_Is_Expired("20150512T183812|010203|20150512T214115|040506")
+        self.assertTrue(result ==False)
+        
+        result = utilities._TTL_Is_Expired("20130512T183812|010203|20150512T214115|040506")
+        self.assertTrue(result ==True)
+        
+        print "TTL_Is_Expired_Test : OK"
+                
+        pass
+
 
 # if __name__ == "__main__":
 #     import sys;sys.argv = ['Test.CompressionTest']
@@ -102,7 +120,8 @@ class Test(TestCase):
 # p = Test().CompressionTest()
 # p = Test().SerializationTest()
 # p = Test().TTL_Test()
-p = Test().TTL_TS_DeSerialize_Test()
+# p = Test().TTL_TS_DeSerialize_Test()
+# p = Test().TTL_Is_Expired_Test()
 
 
 

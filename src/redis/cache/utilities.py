@@ -32,6 +32,7 @@ import pickle
 import datetime
 from redis.cache import errors
 
+
 _COMPRESS = 1
 _DECOMPRESS = 2
 
@@ -100,7 +101,7 @@ def _TTLSerialize(ttlSLI, ttlABS, forceUpdateDtABS):
  
     return strResult
  
-def _TTL_TS_DeSerialize(ttl):       #TODO      20140512T183812|010203|20140512T214115|040506
+def _TTL_TS_DeSerialize(ttl):
     
     if(ttl is None or ttl.strip()==""):
         raise errors.ArgumentError("Parameter is invalid (ttl)")
@@ -110,11 +111,10 @@ def _TTL_TS_DeSerialize(ttl):       #TODO      20140512T183812|010203|20140512T2
     tsABS = _NO_EXPIRATION
     
     if(dts[1]!=_No_TTL):
-        zz = dts[1][0:1]
         tsSLI = datetime.timedelta(hours=int(dts[1][0:2]), minutes=int(dts[1][2:4]), seconds=int(dts[1][4:6]))
         pass
 
-    if(dts[1]!=_No_TTL):
+    if(dts[3]!=_No_TTL):
         tsABS = datetime.timedelta(hours=int(dts[3][0:2]), minutes=int(dts[3][2:4]), seconds=int(dts[3][4:6]))
         pass    
     
@@ -123,7 +123,39 @@ def _TTL_TS_DeSerialize(ttl):       #TODO      20140512T183812|010203|20140512T2
 
 def _TTL_DT_DeSerialize(ttl):
     
-    pass
+    if(ttl is None or ttl.strip()==""):
+        raise errors.ArgumentError("Parameter is invalid (ttl)")
+    
+    dts = ttl.split("|")
+    dtSLI = datetime.datetime.max
+    dtABS = datetime.datetime.max
+    
+    if(dts[0]!=_No_TTL):
+        dtSLI = datetime.datetime.strptime(dts[0], "%Y%m%dT%H%M%S")
+        pass
+
+    if(dts[2]!=_No_TTL):
+        dtABS = datetime.datetime.strptime(dts[2], "%Y%m%dT%H%M%S")
+        pass    
+    
+    result = (dtSLI, dtABS)
+    return result
+
+
+def _TTL_Is_Expired(ttl):
+    
+    if(ttl is None or ttl.strip()==""):
+        raise errors.ArgumentError("Parameter is invalid (ttl)")
+    
+    dtNow = datetime.datetime.now()
+    dt = ttl
+    if( type(ttl) is str ):
+        dt = _TTL_DT_DeSerialize(ttl)
+    
+    if(dtNow>dt[0]) or (dtNow>dt[1]):
+        return True
+    else:
+        return False
 
 
 
