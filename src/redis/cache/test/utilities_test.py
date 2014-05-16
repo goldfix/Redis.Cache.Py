@@ -46,6 +46,8 @@ class Test(TestCase):
         str_to_compress = f.read()
         f.flush()
         f.close()
+        
+        
 
         str_compressed = utilities._Deflate(str_to_compress, _COMPRESS)
         str_decompressed = utilities._Deflate(str_compressed, _DECOMPRESS)
