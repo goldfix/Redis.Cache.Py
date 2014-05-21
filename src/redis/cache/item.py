@@ -25,19 +25,88 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
+from redis.cache import config, utilities, errors, dal
+import datetime
 
-class RedisCacheDal(object):
+class _ManagementItemsCache(object):
     '''
     classdocs
     '''
-
 
     def __init__(self):
         '''
         Constructor
         '''
         
+        self.DefaultAbsoluteExpiration = config.DefaultAbsoluteExpiration
+        self.DefaultSlidingExpiration = config.DefaultSlidingExpiration
+        self._TypeStorage = config.TypeStorage
+        
         pass
 
+
+    def _SetTTL(self, key, slidingExpiration, absoluteExpiration, dal):
+        result = False
+        
+        if(slidingExpiration != utilities._NO_EXPIRATION or absoluteExpiration != utilities._NO_EXPIRATION):
+
+            if(slidingExpiration != utilities._NO_EXPIRATION):
+                result = dal.SetTTL(key, slidingExpiration)
+                pass
+            else:
+                if(absoluteExpiration != utilities._NO_EXPIRATION):
+                    result = dal.SetTTL(key, absoluteExpiration)
+                    pass
+                else:
+                    # Continue...
+                    pass
+                pass
+            pass
+        else:
+            # Continue...
+            pass
+        
+        return  result
+        pass
+
+
+    def Add(self, key, value, slidingExpiration, absoluteExpiration, forceOverWrite):
+        if(key is None or key.strip()==""):
+            raise errors.ArgumentError("Parameter is invalid (key)")
+        
+        if(slidingExpiration != utilities._NO_EXPIRATION and absoluteExpiration != utilities._NO_EXPIRATION) and (slidingExpiration>=absoluteExpiration):
+            raise errors.GenericError("Sliding Expiration is greater or equal than Absolute Expiration.")
+            pass
+        
+        _dal = dal._RedisDal()
+        ttl = utilities._TTLSerialize(slidingExpiration, absoluteExpiration, datetime.datetime.max)
+        if(self._TypeStorage==config.UseList):
+            if(not forceOverWrite):
+                if(_dal.ItemExist(key)):
+                    raise errors.GenericError("This Item Exists.")
+                    pass
+                else:
+                    # Continue...
+                    pass
+                pass
+            else:
+                if(_dal.ItemExist(key)):
+                    _dal.DeleteTTL(key)
+                    pass
+                else:
+                    # Continue...
+                    pass
+                pass
+            pass
+        
+            result = _dal.AddListItemWithTTL(key, value, ttl)
+            self._SetTTL(key, slidingExpiration, absoluteExpiration, _dal)
+            return result
+        else:
+            raise errors.GenericError("NotImplementedException.")
+            pass
+        pass
+
+    
 
 

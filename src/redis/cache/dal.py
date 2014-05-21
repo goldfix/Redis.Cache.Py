@@ -30,7 +30,7 @@ import redis
 from redis.cache import config, errors
 
 
-class RedisDal(object):
+class _RedisDal(object):
     """
         
     """
