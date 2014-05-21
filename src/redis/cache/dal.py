@@ -25,8 +25,9 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
+
 import redis
-from redis.cache import config
+from redis.cache import config, errors
 
 
 class RedisDal(object):
@@ -35,7 +36,7 @@ class RedisDal(object):
     """
     
     def __init__(self):
-        self._db = redis.StrictRedis(host=config.RedisDatabase, port=config.RedisConnectionStringPort, db=config.RedisDatabase)
+        self._db = redis.StrictRedis(host=config.RedisConnectionString, port=config.RedisConnectionStringPort, db=config.RedisDatabase)
         pass
 
     def SetTTL(self, key, ttl):
@@ -123,7 +124,7 @@ class RedisDal(object):
 
         pass
 
-    def AddListItem(self, key, value, value_ttl):
+    def AddListItemWithTTL(self, key, value, value_ttl):
         if( key is None or str(key).strip() == "" 
             or value is None or str(value).strip() == ""
             or value_ttl is None or str(value_ttl).strip() == ""
@@ -131,8 +132,8 @@ class RedisDal(object):
             raise errors.ArgumentError("Parameter is invalid (key or value or value_ttl)")
 
         try:
-            v = (value_ttl, value)
-            result = self._db.rpush(key, v)
+            result = self._db.rpush(key, value_ttl)
+            result = self._db.rpush(key, value)
             return result 
         except (Exception):
             raise
@@ -142,13 +143,16 @@ class RedisDal(object):
         pass
 
 
-    def GetListItem(self, key, type):
+    def GetListItem(self, key):
         if( key is None or str(key).strip() == "" ):
             raise errors.ArgumentError("Parameter is invalid (key)")
 
         try:
             val = self._db.lrange(key, 0, 1)
-            result = (va[0], val[1])
+            if(val==None or len(val)==0):
+                result = None
+            else:
+                result = (val[0], val[1])
             return result 
         except (Exception):
             raise

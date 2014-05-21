@@ -7,3 +7,5 @@ RedisConnectionStringPort = "6379"
 RedisDatabase = 0
 TypeStorage = "UseList"
 UseCompression = False
+
+

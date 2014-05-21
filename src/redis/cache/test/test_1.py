@@ -169,7 +169,7 @@ class MyUnitTest(TestCase):
         self.assertTrue(( bytes_to_decompressed==str_to_compress ))
         
         
-        print "test list..."        #----------------------------------------------------------------------------------------------------------------
+        print "test list..."        #-x---------------------------------------------------------------------------------------------------------------
         
         test_list = list()
         for i in range(10):
@@ -229,7 +229,7 @@ class MyUnitTest(TestCase):
 
 
 # x = MyUnitTest().LoadData_Test_1()
-x = MyUnitTest().LoadData_Test_4()
+# x = MyUnitTest().LoadData_Test_4()
 # x = MyUnitTest().CSharpTest()
 # x = MyUnitTest().DeflateTest()
 # x = MyUnitTest().DecodeDataFrom_C_Test()

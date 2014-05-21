@@ -26,10 +26,84 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
 from unittest.case import TestCase
+from redis.cache import dal, utilities, config
+import datetime
+
 
 class Test(TestCase):
 
     def __init__(self):
         print "\n"
     pass
+
+
+    def ItemExist_Test(self):
+        
+        result = dal.RedisDal().ItemExist("test_1122")
+        self.assertTrue((result==False))
+        print "ItemExist_Test::OK"
+        
+        pass
+
+    def AddListItem_Test(self):
+        dal.RedisDal().ItemDelete("key1234")
+        result = dal.RedisDal().AddListItem("key1234", "val1")
+        result = dal.RedisDal().AddListItem("key1234", "val2")
+        result = dal.RedisDal().GetListItem("key1234")
+        self.assertTupleEqual(result, ('val1', 'val2'))         
+        print "AddListItem_Test::OK"
+        pass
+
+
+    def AddListItemWithTTL_Test(self):
+        
+        #Set TTL
+        ttlSLI = datetime.timedelta(hours=0, minutes=0, seconds=20)
+        ttlABS = datetime.timedelta(hours=0, minutes=0, seconds=30)
+        ttl = utilities._TTLSerialize(ttlSLI, ttlABS, datetime.datetime.max)
+        
+        dal.RedisDal().ItemDelete("key456")
+        
+        result = dal.RedisDal().AddListItemWithTTL("key456", "value_1", ttl)
+        
+        dal.RedisDal().SetTTL("key456", ttlSLI)
+        
+        result = dal.RedisDal().GetListItem("key456")
+        
+        self.assertTupleEqual(result, (ttl, 'value_1'))
+        self.assertTrue(dal.RedisDal()._db.ttl("key456"), 20)
+        
+        
+        #Update TTL
+        ttlSLI = datetime.timedelta(hours=0, minutes=0, seconds=10)
+        ttl = utilities._TTLSerialize(ttlSLI, ttlABS, datetime.datetime.max)
+        
+        dal.RedisDal().SetTTL("key456", ttlSLI)
+        dal.RedisDal().UpdateTTL_ListItem("key456", ttl)
+        result = dal.RedisDal().GetListItem("key456")
+        
+        self.assertTrue(dal.RedisDal()._db.ttl("key456"), 10)
+        self.assertTupleEqual(result, (ttl, 'value_1'))
+        
+        #Delete TTL
+        ttlSLI = config.DefaultSlidingExpiration
+        ttlABS = config.DefaultAbsoluteExpiration
+        ttl = utilities._TTLSerialize(ttlSLI, ttlABS, datetime.datetime.max)
+        
+        dal.RedisDal().UpdateTTL_ListItem("key456", ttl)
+        dal.RedisDal().DeleteTTL("key456")
+        
+        result = dal.RedisDal().GetListItem("key456")
+        
+        self.assertTrue(dal.RedisDal()._db.ttl("key456"), -1)
+        self.assertTupleEqual(result, (ttl, 'value_1'))
+        
+        print "AddListItemWithTTL_Test::OK"
+        pass
+
+# x = Test().ItemExist_Test()
+# x = Test().AddListItem_Test()
+x = Test().AddListItemWithTTL_Test()
+
+ 
 
