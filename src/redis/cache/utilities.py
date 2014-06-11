@@ -80,7 +80,8 @@ def _TTLSerialize(ttlSLI, ttlABS, forceUpdateDtABS):
     
     dtResult = (datetime.datetime.utcnow() + ttlSLI)
     str_dtSLI = dtResult.strftime("%Y%m%dT%H%M%S")
-    str_tsSLI = str(ttlSLI).split(":")[0].zfill(2) + str(ttlSLI).split(":")[1].zfill(2) + str(ttlSLI).split(":")[2].zfill(2)
+    #str_tsSLI = str(ttlSLI).split(":")[0].zfill(2) + str(ttlSLI).split(":")[1].zfill(2) + str(ttlSLI).split(":")[2].zfill(2)
+    str_tsSLI = str(int(ttlSLI.total_seconds()))
 
     if(ttlSLI==_NO_EXPIRATION):
         str_dtSLI = _No_TTL
@@ -88,7 +89,8 @@ def _TTLSerialize(ttlSLI, ttlABS, forceUpdateDtABS):
         
     dtResult = (datetime.datetime.utcnow() + ttlABS)
     str_dtABS = dtResult.strftime("%Y%m%dT%H%M%S")
-    str_tsABS = str(ttlABS).split(":")[0].zfill(2) + str(ttlABS).split(":")[1].zfill(2) + str(ttlABS).split(":")[2].zfill(2)
+    #str_tsABS = str(ttlABS).split(":")[0].zfill(2) + str(ttlABS).split(":")[1].zfill(2) + str(ttlABS).split(":")[2].zfill(2)
+    str_tsABS = str(int(ttlABS.total_seconds()))
 
     if(ttlABS==_NO_EXPIRATION):
         str_dtABS = _No_TTL
@@ -111,11 +113,13 @@ def _TTL_TS_DeSerialize(ttl):
     tsABS = _NO_EXPIRATION
     
     if(dts[1]!=_No_TTL):
-        tsSLI = datetime.timedelta(hours=int(dts[1][0:2]), minutes=int(dts[1][2:4]), seconds=int(dts[1][4:6]))
+#         tsSLI = datetime.timedelta(hours=int(dts[1][0:2]), minutes=int(dts[1][2:4]), seconds=int(dts[1][4:6]))
+        tsSLI = datetime.timedelta(seconds=int(dts[1]))
         pass
 
     if(dts[3]!=_No_TTL):
-        tsABS = datetime.timedelta(hours=int(dts[3][0:2]), minutes=int(dts[3][2:4]), seconds=int(dts[3][4:6]))
+        #tsABS = datetime.timedelta(hours=int(dts[3][0:2]), minutes=int(dts[3][2:4]), seconds=int(dts[3][4:6]))
+        tsABS = datetime.timedelta(seconds=int(dts[3]))
         pass    
     
     result = (tsSLI, tsABS)
@@ -144,7 +148,7 @@ def _TTL_DT_DeSerialize(ttl):
 
 def _TTL_Is_Expired(ttl):
     
-    if(ttl is None or ttl.strip()==""):
+    if(ttl is None):
         raise errors.ArgumentError("Parameter is invalid (ttl)")
     
     dtNow = datetime.datetime.now()

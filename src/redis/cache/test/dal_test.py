@@ -46,10 +46,10 @@ class Test(TestCase):
         pass
 
     def AddListItem_Test(self):
-        dal.RedisDal().ItemDelete("key1234")
-        result = dal.RedisDal().AddListItem("key1234", "val1")
-        result = dal.RedisDal().AddListItem("key1234", "val2")
-        result = dal.RedisDal().GetListItem("key1234")
+        dal._RedisDal().ItemDelete("key1234")
+        result = dal._RedisDal().AddListItem("key1234", "val1")
+        result = dal._RedisDal().AddListItem("key1234", "val2")
+        result = dal._RedisDal().GetListItem("key1234")
         self.assertTupleEqual(result, ('val1', 'val2'))         
         print "AddListItem_Test::OK"
         pass
@@ -62,27 +62,27 @@ class Test(TestCase):
         ttlABS = datetime.timedelta(hours=0, minutes=0, seconds=30)
         ttl = utilities._TTLSerialize(ttlSLI, ttlABS, datetime.datetime.max)
         
-        dal.RedisDal().ItemDelete("key456")
+        dal._RedisDal().ItemDelete("key456")
         
-        result = dal.RedisDal().AddListItemWithTTL("key456", "value_1", ttl)
+        result = dal._RedisDal().AddListItemWithTTL("key456", "value_1", ttl)
         
-        dal.RedisDal().SetTTL("key456", ttlSLI)
+        dal._RedisDal().SetTTL("key456", ttlSLI)
         
-        result = dal.RedisDal().GetListItem("key456")
+        result = dal._RedisDal().GetListItem("key456")
         
         self.assertTupleEqual(result, (ttl, 'value_1'))
-        self.assertTrue(dal.RedisDal()._db.ttl("key456"), 20)
+        self.assertTrue(dal._RedisDal()._db.ttl("key456"), 20)
         
         
         #Update TTL
         ttlSLI = datetime.timedelta(hours=0, minutes=0, seconds=10)
         ttl = utilities._TTLSerialize(ttlSLI, ttlABS, datetime.datetime.max)
         
-        dal.RedisDal().SetTTL("key456", ttlSLI)
-        dal.RedisDal().UpdateTTL_ListItem("key456", ttl)
-        result = dal.RedisDal().GetListItem("key456")
+        dal._RedisDal().SetTTL("key456", ttlSLI)
+        dal._RedisDal().UpdateTTL_ListItem("key456", ttl)
+        result = dal._RedisDal().GetListItem("key456")
         
-        self.assertTrue(dal.RedisDal()._db.ttl("key456"), 10)
+        self.assertTrue(dal._RedisDal()._db.ttl("key456"), 10)
         self.assertTupleEqual(result, (ttl, 'value_1'))
         
         #Delete TTL
@@ -90,12 +90,12 @@ class Test(TestCase):
         ttlABS = config.DefaultAbsoluteExpiration
         ttl = utilities._TTLSerialize(ttlSLI, ttlABS, datetime.datetime.max)
         
-        dal.RedisDal().UpdateTTL_ListItem("key456", ttl)
-        dal.RedisDal().DeleteTTL("key456")
+        dal._RedisDal().UpdateTTL_ListItem("key456", ttl)
+        dal._RedisDal().DeleteTTL("key456")
         
-        result = dal.RedisDal().GetListItem("key456")
+        result = dal._RedisDal().GetListItem("key456")
         
-        self.assertTrue(dal.RedisDal()._db.ttl("key456"), -1)
+        self.assertTrue(dal._RedisDal()._db.ttl("key456"), -1)
         self.assertTupleEqual(result, (ttl, 'value_1'))
         
         print "AddListItemWithTTL_Test::OK"
@@ -103,7 +103,7 @@ class Test(TestCase):
 
 # x = Test().ItemExist_Test()
 # x = Test().AddListItem_Test()
-x = Test().AddListItemWithTTL_Test()
+# x = Test().AddListItemWithTTL_Test()
 
  
 

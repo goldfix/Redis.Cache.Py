@@ -105,7 +105,7 @@ class _ManagementItemsCache(object):
                 pass
             else:
                 if(_dal.ItemExist(key)):
-                    _dal.DeleteTTL(key)
+                    _dal.ItemDelete(key)
                     pass
                 else:
                     # Continue...
@@ -141,7 +141,7 @@ class _ManagementItemsCache(object):
                 if(ttl_Dt[0] != datetime.datetime.max):
                     ttl = utilities._TTLSerialize(ttl_Ts[0], ttl_Ts[1], ttl_Dt[1])
                     _dal.UpdateTTL_ListItem(key, ttl)
-                    _dal.SetTTL(key, ttl)
+                    _dal.SetTTL(key, ttl_Ts[0])
                 else:
                     pass
                 
@@ -150,7 +150,7 @@ class _ManagementItemsCache(object):
                 ic.AbsoluteExpiration = ttl_Ts[1]
                 ic.Key = key
                 ic.Value = result[1]
-                return result
+                return ic
         else:
             return None
             
