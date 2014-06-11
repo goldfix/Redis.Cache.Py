@@ -157,15 +157,35 @@ class _ManagementItemsCache(object):
         pass
 
     def GetValue(self, key):
+        if(key is None or key.strip()==""):
+            raise errors.ArgumentError("Parameter is invalid (key)")
+        
         result  = self.GetItemCache(key)
         if(result!=None):
             return result.Value
         else:
             return None
-        
         pass
 
+    
+    def Exist(self, key):
+        if(key is None or key.strip()==""):
+            raise errors.ArgumentError("Parameter is invalid (key)")
+        
+        _dal = dal._RedisDal()
+        return _dal.ItemExist(key)
 
-
+    def Delete(self, key):
+        if(key is None or key.strip()==""):
+            raise errors.ArgumentError("Parameter is invalid (key)")
+        
+        _dal = dal._RedisDal()
+        return _dal.DeleteTTL(key)
+    
+    
+    
+    
+    
+    
 
 
