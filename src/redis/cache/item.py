@@ -28,6 +28,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 from redis.cache import config, utilities, errors, dal
 import datetime
 
+
+class ItemCache(object):
+    
+    def __init__(self):
+        self.Key = ""
+        self.Value = ""
+        
+        self.SlidingExpiration = config.DefaultSlidingExpiration
+        self.AbsoluteExpiration = config.DefaultAbsoluteExpiration
+        
+        pass
+    
+    
+
 class _ManagementItemsCache(object):
     '''
     classdocs
@@ -108,5 +122,50 @@ class _ManagementItemsCache(object):
         pass
 
     
+    def GetItemCache(self, key):
+        if(key is None or key.strip()==""):
+            raise errors.ArgumentError("Parameter is invalid (key)")
+        
+        _dal = dal._RedisDal()
+        result = _dal.GetListItem(key)
+        
+        if(result!=None and len(result)>0):
+            ttl_Dt = utilities._TTL_DT_DeSerialize(result[0])
+            ttl_Ts = utilities._TTL_TS_DeSerialize(result[0])
+            
+            if(utilities._TTL_Is_Expired(ttl_Dt)):
+                _dal.DeleteTTL(key)
+                return None
+            else:
+                # Update SLI TTL on Redis...
+                if(ttl_Dt[0] != datetime.datetime.max):
+                    ttl = utilities._TTLSerialize(ttl_Ts[0], ttl_Ts[1], ttl_Dt[1])
+                    _dal.UpdateTTL_ListItem(key, ttl)
+                    _dal.SetTTL(key, ttl)
+                else:
+                    pass
+                
+                ic = ItemCache()
+                ic.SlidingExpiration = ttl_Ts[0]
+                ic.AbsoluteExpiration = ttl_Ts[1]
+                ic.Key = key
+                ic.Value = result[1]
+                return result
+        else:
+            return None
+            
+        pass
+
+    def GetValue(self, key):
+        result  = self.GetItemCache(key)
+        if(result!=None):
+            return result.Value
+        else:
+            return None
+        
+        pass
+
+
+
 
 
