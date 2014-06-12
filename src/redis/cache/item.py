@@ -40,7 +40,50 @@ class ItemCache(object):
         
         pass
     
+    def Save(self, forceOverWrite):
+        m = _ManagementItemsCache()
+        result = m.Add(self.Key, self.Value, self.SlidingExpiration, self.AbsoluteExpiration, forceOverWrite)
+        return result
     
+    @staticmethod
+    def AddItemCache(itemsCache, forceOverWrite):
+        
+        if(itemsCache is None or not(itemsCache is ItemCache) ):
+            raise errors.ArgumentError("Parameter is invalid (itemsCache)")
+        
+        return itemsCache.Save(forceOverWrite)
+        pass
+    
+    @staticmethod
+    def AddItem(key, value, forceOverWrite, slidingExpiration=None, absoluteExpiration=None):
+        ic = ItemCache()
+        ic.Key= key
+        ic.Value = value
+        
+        if(absoluteExpiration is None):
+            ic.AbsoluteExpiration = absoluteExpiration
+        
+        if(slidingExpiration is None):
+            ic.SlidingExpiration = slidingExpiration
+            
+        return ic.Save(forceOverWrite)
+    
+    @staticmethod
+    def DeleteItem(key):
+        m = _ManagementItemsCache()
+        return m.Delete(key)
+        
+    @staticmethod
+    def ExistItem(key):
+        m = _ManagementItemsCache()
+        return m.Exist(key)
+        
+    @staticmethod
+    def GetItemCache(key):
+        m = _ManagementItemsCache()
+        return m.GetItemCache(key)
+
+
 
 class _ManagementItemsCache(object):
     '''

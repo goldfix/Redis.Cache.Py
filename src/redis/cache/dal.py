@@ -149,7 +149,7 @@ class _RedisDal(object):
 
         try:
             val = self._db.lrange(key, 0, 1)
-            if(val==None or len(val)==0):
+            if(val is None or len(val)==0):
                 result = None
             else:
                 result = (val[0], val[1])

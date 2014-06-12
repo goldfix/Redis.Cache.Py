@@ -8,6 +8,8 @@ from unittest.case import TestCase
 from redis import cache
 from redis.cache import item, utilities
 import datetime
+from redis.cache.item import ItemCache
+import time
 
 
 class Test(TestCase):
@@ -45,10 +47,42 @@ class Test(TestCase):
         result = t.GetItemCache("k2")
         
         return result
+    
+    
+    def SetToCSharp_2(self):
+        f = open("value_Text.txt", "rb")        
+        value_Text = f.read()
+        f.flush()
+        f.close()
+        
+        ic = ItemCache()
+        ic.Key= "K3"
+        ic.Value = value_Text
+        ic.AbsoluteExpiration = datetime.timedelta(hours=13)
+        ic.SlidingExpiration = datetime.timedelta(seconds=3)
+        ic.Save(True)
+
+        time.sleep(2)
+        result_1 = ItemCache.GetItemCache("K3")
+        self.assertTrue(result_1.Value, value_Text)
+
+        time.sleep(2)
+        result_1 = ItemCache.GetItemCache("K3")
+        self.assertTrue(result_1.Value, value_Text)
+                                
+        time.sleep(4)
+        result_1 = ItemCache.GetItemCache("K3")
+        self.assertIsNone(result_1, None)
+        
+        
+        print "SetToCSharp_2::OK"
+        
+        pass
 
 
 # x = Test().GetFromCSharp()
-x = Test().SetToCSharp()
+# x = Test().SetToCSharp()
+x = Test().SetToCSharp_2()
 
 
 
