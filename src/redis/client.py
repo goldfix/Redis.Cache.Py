@@ -6,9 +6,10 @@ import warnings
 import threading
 import time as mod_time
 from redis._compat import (b, basestring, bytes, imap, iteritems, iterkeys,
-                           itervalues, izip, long, nativestr, urlparse,
-                           unicode)
-from redis.connection import ConnectionPool, UnixDomainSocketConnection
+                           itervalues, izip, long, nativestr, unicode)
+from redis.connection import (ConnectionPool, UnixDomainSocketConnection,
+                              SSLConnection, Token)
+from redis.lock import Lock, LuaLock
 from redis.exceptions import (
     ConnectionError,
     DataError,
@@ -17,6 +18,7 @@ from redis.exceptions import (
     PubSubError,
     RedisError,
     ResponseError,
+    TimeoutError,
     WatchError,
 )
 
@@ -107,27 +109,40 @@ def parse_info(response):
 
     for line in response.splitlines():
         if line and not line.startswith('#'):
-            key, value = line.split(':', 1)
-            info[key] = get_value(value)
+            if line.find(':') != -1:
+                key, value = line.split(':', 1)
+                info[key] = get_value(value)
+            else:
+                # if the line isn't splittable, append it to the "__raw__" key
+                info.setdefault('__raw__', []).append(line)
+
     return info
 
 
 SENTINEL_STATE_TYPES = {
     'can-failover-its-master': int,
+    'config-epoch': int,
+    'down-after-milliseconds': int,
+    'failover-timeout': int,
     'info-refresh': int,
     'last-hello-message': int,
     'last-ok-ping-reply': int,
     'last-ping-reply': int,
+    'last-ping-sent': int,
     'master-link-down-time': int,
     'master-port': int,
     'num-other-sentinels': int,
     'num-slaves': int,
     'o-down-time': int,
     'pending-commands': int,
+    'parallel-syncs': int,
     'port': int,
     'quorum': int,
+    'role-reported-time': int,
     's-down-time': int,
     'slave-priority': int,
+    'slave-repl-offset': int,
+    'voted-leader-epoch': int
 }
 
 
@@ -143,23 +158,24 @@ def parse_sentinel_state(item):
     return result
 
 
-def parse_sentinel(response, **options):
-    "Parse the result of Redis's SENTINEL command"
-    parse = options.get('parse')
-    response = nativestr(response)
-    if parse == 'SENTINEL_INFO':
-        return [parse_sentinel_state(item) for item in response]
-    elif parse == 'SENTINEL_INFO_MASTERS':
-        result = {}
-        for item in response:
-            state = parse_sentinel_state(item)
-            result[state['name']] = state
-        return result
-    elif parse == 'SENTINEL_ADDR_PORT':
-        if response is None:
-            return
-        return response[0], int(response[1])
-    return response
+def parse_sentinel_master(response):
+    return parse_sentinel_state(imap(nativestr, response))
+
+
+def parse_sentinel_masters(response):
+    result = {}
+    for item in response:
+        state = parse_sentinel_state(imap(nativestr, item))
+        result[state['name']] = state
+    return result
+
+
+def parse_sentinel_slaves_and_sentinels(response):
+    return [parse_sentinel_state(imap(nativestr, item)) for item in response]
+
+
+def parse_sentinel_get_master(response):
+    return response and (response[0], int(response[1])) or None
 
 
 def pairs_to_dict(response):
@@ -173,7 +189,12 @@ def pairs_to_dict_typed(response, type_info):
     result = {}
     for key, value in izip(it, it):
         if key in type_info:
-            value = type_info[key](value)
+            try:
+                value = type_info[key](value)
+            except:
+                # if for some reason the value can't be coerced, just use
+                # the string value
+                pass
         result[key] = value
     return result
 
@@ -213,67 +234,46 @@ def float_or_none(response):
     return float(response)
 
 
-def parse_client(response, **options):
-    parse = options['parse']
-    if parse == 'LIST':
-        clients = []
-        for c in nativestr(response).splitlines():
-            clients.append(dict([pair.split('=') for pair in c.split(' ')]))
-        return clients
-    elif parse == 'KILL':
-        return bool(response)
-    elif parse == 'GETNAME':
-        return response and nativestr(response)
-    elif parse == 'SETNAME':
-        return nativestr(response) == 'OK'
-
-
-def parse_config(response, **options):
-    if options['parse'] == 'GET':
-        response = [nativestr(i) if i is not None else None for i in response]
-        return response and pairs_to_dict(response) or {}
+def bool_ok(response):
     return nativestr(response) == 'OK'
 
 
-def parse_script(response, **options):
-    parse = options['parse']
-    if parse in ('FLUSH', 'KILL'):
-        return response == 'OK'
-    if parse == 'EXISTS':
-        return list(imap(bool, response))
-    return response
+def parse_client_list(response, **options):
+    clients = []
+    for c in nativestr(response).splitlines():
+        clients.append(dict([pair.split('=') for pair in c.split(' ')]))
+    return clients
+
+
+def parse_config_get(response, **options):
+    response = [nativestr(i) if i is not None else None for i in response]
+    return response and pairs_to_dict(response) or {}
 
 
 def parse_scan(response, **options):
     cursor, r = response
-    return nativestr(cursor), r
+    return long(cursor), r
 
 
 def parse_hscan(response, **options):
     cursor, r = response
-    return nativestr(cursor), r and pairs_to_dict(r) or {}
+    return long(cursor), r and pairs_to_dict(r) or {}
 
 
 def parse_zscan(response, **options):
     score_cast_func = options.get('score_cast_func', float)
     cursor, r = response
     it = iter(r)
-    return nativestr(cursor), list(izip(it, imap(score_cast_func, it)))
+    return long(cursor), list(izip(it, imap(score_cast_func, it)))
 
 
-def parse_slowlog(response, **options):
-    parse = options['parse']
-    if parse == 'LEN':
-        return int(response)
-    elif parse == 'RESET':
-        return nativestr(response) == 'OK'
-    elif parse == 'GET':
-        return [{
-            'id': item[0],
-            'start_time': int(item[1]),
-            'duration': int(item[2]),
-            'command': b(' ').join(item[3])
-        } for item in response]
+def parse_slowlog_get(response, **options):
+    return [{
+        'id': item[0],
+        'start_time': int(item[1]),
+        'duration': int(item[2]),
+        'command': b(' ').join(item[3])
+    } for item in response]
 
 
 class StrictRedis(object):
@@ -310,7 +310,7 @@ class StrictRedis(object):
         string_keys_to_dict(
             'FLUSHALL FLUSHDB LSET LTRIM MSET PFMERGE RENAME '
             'SAVE SELECT SHUTDOWN SLAVEOF WATCH UNWATCH',
-            lambda r: nativestr(r) == 'OK'
+            bool_ok
         ),
         string_keys_to_dict('BLPOP BRPOP', lambda r: r and tuple(r) or None),
         string_keys_to_dict(
@@ -322,15 +322,16 @@ class StrictRedis(object):
             zset_score_pairs
         ),
         string_keys_to_dict('ZRANK ZREVRANK', int_or_none),
+        string_keys_to_dict('BGREWRITEAOF BGSAVE', lambda r: True),
         {
-            'BGREWRITEAOF': (
-                lambda r: nativestr(r) == ('Background rewriting of AOF '
-                                           'file started')
-            ),
-            'BGSAVE': lambda r: nativestr(r) == 'Background saving started',
-            'CLIENT': parse_client,
-            'CONFIG': parse_config,
-            'DEBUG': parse_debug_object,
+            'CLIENT GETNAME': lambda r: r and nativestr(r),
+            'CLIENT KILL': bool_ok,
+            'CLIENT LIST': parse_client_list,
+            'CLIENT SETNAME': bool_ok,
+            'CONFIG GET': parse_config_get,
+            'CONFIG RESETSTAT': bool_ok,
+            'CONFIG SET': bool_ok,
+            'DEBUG OBJECT': parse_debug_object,
             'HGETALL': lambda r: r and pairs_to_dict(r) or {},
             'HSCAN': parse_hscan,
             'INFO': parse_info,
@@ -338,13 +339,25 @@ class StrictRedis(object):
             'OBJECT': parse_object,
             'PING': lambda r: nativestr(r) == 'PONG',
             'RANDOMKEY': lambda r: r and r or None,
-            'SCRIPT': parse_script,
-            'SET': lambda r: r and nativestr(r) == 'OK',
-            'TIME': lambda x: (int(x[0]), int(x[1])),
-            'SENTINEL': parse_sentinel,
             'SCAN': parse_scan,
-            'SLOWLOG': parse_slowlog,
+            'SCRIPT EXISTS': lambda r: list(imap(bool, r)),
+            'SCRIPT FLUSH': bool_ok,
+            'SCRIPT KILL': bool_ok,
+            'SCRIPT LOAD': nativestr,
+            'SENTINEL GET-MASTER-ADDR-BY-NAME': parse_sentinel_get_master,
+            'SENTINEL MASTER': parse_sentinel_master,
+            'SENTINEL MASTERS': parse_sentinel_masters,
+            'SENTINEL MONITOR': bool_ok,
+            'SENTINEL REMOVE': bool_ok,
+            'SENTINEL SENTINELS': parse_sentinel_slaves_and_sentinels,
+            'SENTINEL SET': bool_ok,
+            'SENTINEL SLAVES': parse_sentinel_slaves_and_sentinels,
+            'SET': lambda r: r and nativestr(r) == 'OK',
+            'SLOWLOG GET': parse_slowlog_get,
+            'SLOWLOG LEN': int,
+            'SLOWLOG RESET': bool_ok,
             'SSCAN': parse_scan,
+            'TIME': lambda x: (int(x[0]), int(x[1])),
             'ZSCAN': parse_zscan
         }
     )
@@ -356,34 +369,34 @@ class StrictRedis(object):
 
         For example::
 
-            redis://username:password@localhost:6379/0
+            redis://[:password]@localhost:6379/0
+            unix://[:password]@/path/to/socket.sock?db=0
 
-        If ``db`` is None, this method will attempt to extract the database ID
-        from the URL path component.
+        There are several ways to specify a database number. The parse function
+        will return the first specified option:
+            1. A ``db`` querystring option, e.g. redis://localhost?db=0
+            2. If using the redis:// scheme, the path argument of the url, e.g.
+               redis://localhost/0
+            3. The ``db`` argument to this function.
 
-        Any additional keyword arguments will be passed along to the Redis
-        class's initializer.
+        If none of these options are specified, db=0 is used.
+
+        Any additional querystring arguments and keyword arguments will be
+        passed along to the ConnectionPool class's initializer. In the case
+        of conflicting arguments, querystring arguments always win.
         """
-        url = urlparse(url)
-
-        # We only support redis:// schemes.
-        assert url.scheme == 'redis' or not url.scheme
-
-        # Extract the database ID from the path component if hasn't been given.
-        if db is None:
-            try:
-                db = int(url.path.replace('/', ''))
-            except (AttributeError, ValueError):
-                db = 0
-
-        return cls(host=url.hostname, port=int(url.port or 6379), db=db,
-                   password=url.password, **kwargs)
+        connection_pool = ConnectionPool.from_url(url, db=db, **kwargs)
+        return cls(connection_pool=connection_pool)
 
     def __init__(self, host='localhost', port=6379,
                  db=0, password=None, socket_timeout=None,
-                 connection_pool=None, charset='utf-8',
-                 errors='strict', decode_responses=False,
-                 unix_socket_path=None):
+                 socket_connect_timeout=None,
+                 socket_keepalive=None, socket_keepalive_options=None,
+                 connection_pool=None, charset='utf-8', errors='strict',
+                 decode_responses=False, retry_on_timeout=False,
+                 unix_socket_path=None,
+                 ssl=False, ssl_keyfile=None, ssl_certfile=None,
+                 ssl_cert_reqs=None, ssl_ca_certs=None):
         if not connection_pool:
             kwargs = {
                 'db': db,
@@ -392,6 +405,7 @@ class StrictRedis(object):
                 'encoding': charset,
                 'encoding_errors': errors,
                 'decode_responses': decode_responses,
+                'retry_on_timeout': retry_on_timeout
             }
             # based on input, setup appropriate connection args
             if unix_socket_path is not None:
@@ -400,12 +414,26 @@ class StrictRedis(object):
                     'connection_class': UnixDomainSocketConnection
                 })
             else:
+                # TCP specific options
                 kwargs.update({
                     'host': host,
-                    'port': port
+                    'port': port,
+                    'socket_connect_timeout': socket_connect_timeout,
+                    'socket_keepalive': socket_keepalive,
+                    'socket_keepalive_options': socket_keepalive_options,
                 })
+
+                if ssl:
+                    kwargs.update({
+                        'connection_class': SSLConnection,
+                        'ssl_keyfile': ssl_keyfile,
+                        'ssl_certfile': ssl_certfile,
+                        'ssl_cert_reqs': ssl_cert_reqs,
+                        'ssl_ca_certs': ssl_ca_certs,
+                    })
             connection_pool = ConnectionPool(**kwargs)
         self.connection_pool = connection_pool
+        self._use_lua_lock = None
 
         self.response_callbacks = self.__class__.RESPONSE_CALLBACKS.copy()
 
@@ -449,7 +477,8 @@ class StrictRedis(object):
                 except WatchError:
                     continue
 
-    def lock(self, name, timeout=None, sleep=0.1):
+    def lock(self, name, timeout=None, sleep=0.1, blocking_timeout=None,
+             lock_class=None):
         """
         Return a new Lock object using key ``name`` that mimics
         the behavior of threading.Lock.
@@ -460,8 +489,26 @@ class StrictRedis(object):
         ``sleep`` indicates the amount of time to sleep per loop iteration
         when the lock is in blocking mode and another client is currently
         holding the lock.
+
+        ``blocking_timeout`` indicates the maximum amount of time in seconds to
+        spend trying to acquire the lock. A value of ``None`` indicates
+        continue trying forever. ``blocking_timeout`` can be specified as a
+        float or integer, both representing the number of seconds to wait.
+
+        ``lock_class`` forces the specified lock implementation.
         """
-        return Lock(self, name, timeout=timeout, sleep=sleep)
+        if lock_class is None:
+            if self._use_lua_lock is None:
+                # the first time .lock() is called, determine if we can use
+                # Lua by attempting to register the necessary scripts
+                try:
+                    LuaLock.register_scripts(self)
+                    self._use_lua_lock = True
+                except ResponseError:
+                    self._use_lua_lock = False
+            lock_class = self._use_lua_lock and LuaLock or Lock
+        return lock_class(self, name, timeout=timeout, sleep=sleep,
+                          blocking_timeout=blocking_timeout)
 
     def pubsub(self, **kwargs):
         """
@@ -480,8 +527,10 @@ class StrictRedis(object):
         try:
             connection.send_command(*args)
             return self.parse_response(connection, command_name, **options)
-        except ConnectionError:
+        except (ConnectionError, TimeoutError) as e:
             connection.disconnect()
+            if not connection.retry_on_timeout and isinstance(e, TimeoutError):
+                raise
             connection.send_command(*args)
             return self.parse_response(connection, command_name, **options)
         finally:
@@ -508,39 +557,43 @@ class StrictRedis(object):
 
     def client_kill(self, address):
         "Disconnects the client at ``address`` (ip:port)"
-        return self.execute_command('CLIENT', 'KILL', address, parse='KILL')
+        return self.execute_command('CLIENT KILL', address)
 
     def client_list(self):
         "Returns a list of currently connected clients"
-        return self.execute_command('CLIENT', 'LIST', parse='LIST')
+        return self.execute_command('CLIENT LIST')
 
     def client_getname(self):
         "Returns the current connection name"
-        return self.execute_command('CLIENT', 'GETNAME', parse='GETNAME')
+        return self.execute_command('CLIENT GETNAME')
 
     def client_setname(self, name):
         "Sets the current connection name"
-        return self.execute_command('CLIENT', 'SETNAME', name, parse='SETNAME')
+        return self.execute_command('CLIENT SETNAME', name)
 
     def config_get(self, pattern="*"):
         "Return a dictionary of configuration based on the ``pattern``"
-        return self.execute_command('CONFIG', 'GET', pattern, parse='GET')
+        return self.execute_command('CONFIG GET', pattern)
 
     def config_set(self, name, value):
         "Set config item ``name`` with ``value``"
-        return self.execute_command('CONFIG', 'SET', name, value, parse='SET')
+        return self.execute_command('CONFIG SET', name, value)
 
     def config_resetstat(self):
         "Reset runtime statistics"
-        return self.execute_command('CONFIG', 'RESETSTAT', parse='RESETSTAT')
+        return self.execute_command('CONFIG RESETSTAT')
+
+    def config_rewrite(self):
+        "Rewrite config file with the minimal change to reflect running config"
+        return self.execute_command('CONFIG REWRITE')
 
     def dbsize(self):
         "Returns the number of keys in the current database"
         return self.execute_command('DBSIZE')
 
     def debug_object(self, key):
-        "Returns version specific metainformation about a give key"
-        return self.execute_command('DEBUG', 'OBJECT', key)
+        "Returns version specific meta information about a given key"
+        return self.execute_command('DEBUG OBJECT', key)
 
     def echo(self, value):
         "Echo the string back from the server"
@@ -592,32 +645,42 @@ class StrictRedis(object):
         return self.execute_command('SAVE')
 
     def sentinel(self, *args):
-        "Redis Sentinel's SENTINEL command"
-        if args[0] in ['masters', 'slaves', 'sentinels']:
-            parse = 'SENTINEL_INFO'
-        else:
-            parse = 'SENTINEL'
-        return self.execute_command('SENTINEL', *args, **{'parse': parse})
-
-    def sentinel_masters(self):
-        "Returns a dictionary containing the master's state."
-        return self.execute_command('SENTINEL', 'masters',
-                                    parse='SENTINEL_INFO_MASTERS')
-
-    def sentinel_slaves(self, service_name):
-        "Returns a list of slaves for ``service_name``"
-        return self.execute_command('SENTINEL', 'slaves', service_name,
-                                    parse='SENTINEL_INFO')
-
-    def sentinel_sentinels(self, service_name):
-        "Returns a list of sentinels for ``service_name``"
-        return self.execute_command('SENTINEL', 'sentinels', service_name,
-                                    parse='SENTINEL_INFO')
+        "Redis Sentinel's SENTINEL command."
+        warnings.warn(
+            DeprecationWarning('Use the individual sentinel_* methods'))
 
     def sentinel_get_master_addr_by_name(self, service_name):
         "Returns a (host, port) pair for the given ``service_name``"
-        return self.execute_command('SENTINEL', 'get-master-addr-by-name',
-                                    service_name, parse='SENTINEL_ADDR_PORT')
+        return self.execute_command('SENTINEL GET-MASTER-ADDR-BY-NAME',
+                                    service_name)
+
+    def sentinel_master(self, service_name):
+        "Returns a dictionary containing the specified masters state."
+        return self.execute_command('SENTINEL MASTER', service_name)
+
+    def sentinel_masters(self):
+        "Returns a list of dictionaries containing each master's state."
+        return self.execute_command('SENTINEL MASTERS')
+
+    def sentinel_monitor(self, name, ip, port, quorum):
+        "Add a new master to Sentinel to be monitored"
+        return self.execute_command('SENTINEL MONITOR', name, ip, port, quorum)
+
+    def sentinel_remove(self, name):
+        "Remove a master from Sentinel's monitoring"
+        return self.execute_command('SENTINEL REMOVE', name)
+
+    def sentinel_sentinels(self, service_name):
+        "Returns a list of sentinels for ``service_name``"
+        return self.execute_command('SENTINEL SENTINELS', service_name)
+
+    def sentinel_set(self, name, option, value):
+        "Set Sentinel monitoring parameters for a given master"
+        return self.execute_command('SENTINEL SET', name, option, value)
+
+    def sentinel_slaves(self, service_name):
+        "Returns a list of slaves for ``service_name``"
+        return self.execute_command('SENTINEL SLAVES', service_name)
 
     def shutdown(self):
         "Shutdown the server"
@@ -635,26 +698,26 @@ class StrictRedis(object):
         instance is promoted to a master instead.
         """
         if host is None and port is None:
-            return self.execute_command("SLAVEOF", "NO", "ONE")
-        return self.execute_command("SLAVEOF", host, port)
+            return self.execute_command('SLAVEOF', Token('NO'), Token('ONE'))
+        return self.execute_command('SLAVEOF', host, port)
 
     def slowlog_get(self, num=None):
         """
         Get the entries from the slowlog. If ``num`` is specified, get the
         most recent ``num`` items.
         """
-        args = ['SLOWLOG', 'GET']
+        args = ['SLOWLOG GET']
         if num is not None:
             args.append(num)
-        return self.execute_command(*args, parse='GET')
+        return self.execute_command(*args)
 
     def slowlog_len(self):
         "Get the number of items in the slowlog"
-        return self.execute_command('SLOWLOG', 'LEN', parse='LEN')
+        return self.execute_command('SLOWLOG LEN')
 
     def slowlog_reset(self):
         "Remove all items in the slowlog"
-        return self.execute_command('SLOWLOG', 'RESET', parse='RESET')
+        return self.execute_command('SLOWLOG RESET')
 
     def time(self):
         """
@@ -766,8 +829,8 @@ class StrictRedis(object):
 
     def getset(self, name, value):
         """
-        Set the value at key ``name`` to ``value`` if key doesn't exist
-        Return the value at key ``name`` atomically
+        Sets the value at key ``name`` to ``value``
+        and returns the old value at key ``name`` atomically.
         """
         return self.execute_command('GETSET', name, value)
 
@@ -1181,10 +1244,10 @@ class StrictRedis(object):
 
         pieces = [name]
         if by is not None:
-            pieces.append('BY')
+            pieces.append(Token('BY'))
             pieces.append(by)
         if start is not None and num is not None:
-            pieces.append('LIMIT')
+            pieces.append(Token('LIMIT'))
             pieces.append(start)
             pieces.append(num)
         if get is not None:
@@ -1193,18 +1256,18 @@ class StrictRedis(object):
             # values. We can't just iterate blindly because strings are
             # iterable.
             if isinstance(get, basestring):
-                pieces.append('GET')
+                pieces.append(Token('GET'))
                 pieces.append(get)
             else:
                 for g in get:
-                    pieces.append('GET')
+                    pieces.append(Token('GET'))
                     pieces.append(g)
         if desc:
-            pieces.append('DESC')
+            pieces.append(Token('DESC'))
         if alpha:
-            pieces.append('ALPHA')
+            pieces.append(Token('ALPHA'))
         if store is not None:
-            pieces.append('STORE')
+            pieces.append(Token('STORE'))
             pieces.append(store)
 
         if groups:
@@ -1228,9 +1291,9 @@ class StrictRedis(object):
         """
         pieces = [cursor]
         if match is not None:
-            pieces.extend(['MATCH', match])
+            pieces.extend([Token('MATCH'), match])
         if count is not None:
-            pieces.extend(['COUNT', count])
+            pieces.extend([Token('COUNT'), count])
         return self.execute_command('SCAN', *pieces)
 
     def scan_iter(self, match=None, count=None):
@@ -1242,8 +1305,8 @@ class StrictRedis(object):
 
         ``count`` allows for hint the minimum number of returns
         """
-        cursor = 0
-        while cursor != '0':
+        cursor = '0'
+        while cursor != 0:
             cursor, data = self.scan(cursor=cursor, match=match, count=count)
             for item in data:
                 yield item
@@ -1259,9 +1322,9 @@ class StrictRedis(object):
         """
         pieces = [name, cursor]
         if match is not None:
-            pieces.extend(['MATCH', match])
+            pieces.extend([Token('MATCH'), match])
         if count is not None:
-            pieces.extend(['COUNT', count])
+            pieces.extend([Token('COUNT'), count])
         return self.execute_command('SSCAN', *pieces)
 
     def sscan_iter(self, name, match=None, count=None):
@@ -1273,8 +1336,8 @@ class StrictRedis(object):
 
         ``count`` allows for hint the minimum number of returns
         """
-        cursor = 0
-        while cursor != '0':
+        cursor = '0'
+        while cursor != 0:
             cursor, data = self.sscan(name, cursor=cursor,
                                       match=match, count=count)
             for item in data:
@@ -1291,9 +1354,9 @@ class StrictRedis(object):
         """
         pieces = [name, cursor]
         if match is not None:
-            pieces.extend(['MATCH', match])
+            pieces.extend([Token('MATCH'), match])
         if count is not None:
-            pieces.extend(['COUNT', count])
+            pieces.extend([Token('COUNT'), count])
         return self.execute_command('HSCAN', *pieces)
 
     def hscan_iter(self, name, match=None, count=None):
@@ -1305,8 +1368,8 @@ class StrictRedis(object):
 
         ``count`` allows for hint the minimum number of returns
         """
-        cursor = 0
-        while cursor != '0':
+        cursor = '0'
+        while cursor != 0:
             cursor, data = self.hscan(name, cursor=cursor,
                                       match=match, count=count)
             for item in data.items():
@@ -1326,9 +1389,9 @@ class StrictRedis(object):
         """
         pieces = [name, cursor]
         if match is not None:
-            pieces.extend(['MATCH', match])
+            pieces.extend([Token('MATCH'), match])
         if count is not None:
-            pieces.extend(['COUNT', count])
+            pieces.extend([Token('COUNT'), count])
         options = {'score_cast_func': score_cast_func}
         return self.execute_command('ZSCAN', *pieces, **options)
 
@@ -1344,8 +1407,8 @@ class StrictRedis(object):
 
         ``score_cast_func`` a callable used to cast the score return value
         """
-        cursor = 0
-        while cursor != '0':
+        cursor = '0'
+        while cursor != 0:
             cursor, data = self.zscan(name, cursor=cursor, match=match,
                                       count=count,
                                       score_cast_func=score_cast_func)
@@ -1504,9 +1567,11 @@ class StrictRedis(object):
                                   score_cast_func)
         pieces = ['ZRANGE', name, start, end]
         if withscores:
-            pieces.append('withscores')
+            pieces.append(Token('WITHSCORES'))
         options = {
-            'withscores': withscores, 'score_cast_func': score_cast_func}
+            'withscores': withscores,
+            'score_cast_func': score_cast_func
+        }
         return self.execute_command(*pieces, **options)
 
     def zrangebylex(self, name, min, max, start=None, num=None):
@@ -1522,7 +1587,7 @@ class StrictRedis(object):
             raise RedisError("``start`` and ``num`` must both be specified")
         pieces = ['ZRANGEBYLEX', name, min, max]
         if start is not None and num is not None:
-            pieces.extend(['LIMIT', start, num])
+            pieces.extend([Token('LIMIT'), start, num])
         return self.execute_command(*pieces)
 
     def zrangebyscore(self, name, min, max, start=None, num=None,
@@ -1544,11 +1609,13 @@ class StrictRedis(object):
             raise RedisError("``start`` and ``num`` must both be specified")
         pieces = ['ZRANGEBYSCORE', name, min, max]
         if start is not None and num is not None:
-            pieces.extend(['LIMIT', start, num])
+            pieces.extend([Token('LIMIT'), start, num])
         if withscores:
-            pieces.append('withscores')
+            pieces.append(Token('WITHSCORES'))
         options = {
-            'withscores': withscores, 'score_cast_func': score_cast_func}
+            'withscores': withscores,
+            'score_cast_func': score_cast_func
+        }
         return self.execute_command(*pieces, **options)
 
     def zrank(self, name, value):
@@ -1602,9 +1669,11 @@ class StrictRedis(object):
         """
         pieces = ['ZREVRANGE', name, start, end]
         if withscores:
-            pieces.append('withscores')
+            pieces.append(Token('WITHSCORES'))
         options = {
-            'withscores': withscores, 'score_cast_func': score_cast_func}
+            'withscores': withscores,
+            'score_cast_func': score_cast_func
+        }
         return self.execute_command(*pieces, **options)
 
     def zrevrangebyscore(self, name, max, min, start=None, num=None,
@@ -1626,11 +1695,13 @@ class StrictRedis(object):
             raise RedisError("``start`` and ``num`` must both be specified")
         pieces = ['ZREVRANGEBYSCORE', name, max, min]
         if start is not None and num is not None:
-            pieces.extend(['LIMIT', start, num])
+            pieces.extend([Token('LIMIT'), start, num])
         if withscores:
-            pieces.append('withscores')
+            pieces.append(Token('WITHSCORES'))
         options = {
-            'withscores': withscores, 'score_cast_func': score_cast_func}
+            'withscores': withscores,
+            'score_cast_func': score_cast_func
+        }
         return self.execute_command(*pieces, **options)
 
     def zrevrank(self, name, value):
@@ -1660,10 +1731,10 @@ class StrictRedis(object):
             weights = None
         pieces.extend(keys)
         if weights:
-            pieces.append('WEIGHTS')
+            pieces.append(Token('WEIGHTS'))
             pieces.extend(weights)
         if aggregate:
-            pieces.append('AGGREGATE')
+            pieces.append(Token('AGGREGATE'))
             pieces.append(aggregate)
         return self.execute_command(*pieces)
 
@@ -1730,7 +1801,7 @@ class StrictRedis(object):
         Set ``key`` to ``value`` within hash ``name`` if ``key`` does not
         exist.  Returns 1 if HSETNX created a field, otherwise 0.
         """
-        return self.execute_command("HSETNX", name, key, value)
+        return self.execute_command('HSETNX', name, key, value)
 
     def hmset(self, name, mapping):
         """
@@ -1789,23 +1860,19 @@ class StrictRedis(object):
         each script as ``args``. Returns a list of boolean values indicating if
         if each already script exists in the cache.
         """
-        options = {'parse': 'EXISTS'}
-        return self.execute_command('SCRIPT', 'EXISTS', *args, **options)
+        return self.execute_command('SCRIPT EXISTS', *args)
 
     def script_flush(self):
         "Flush all scripts from the script cache"
-        options = {'parse': 'FLUSH'}
-        return self.execute_command('SCRIPT', 'FLUSH', **options)
+        return self.execute_command('SCRIPT FLUSH')
 
     def script_kill(self):
         "Kill the currently executing Lua script"
-        options = {'parse': 'KILL'}
-        return self.execute_command('SCRIPT', 'KILL', **options)
+        return self.execute_command('SCRIPT KILL')
 
     def script_load(self, script):
         "Load a Lua ``script`` into the script cache. Returns the SHA."
-        options = {'parse': 'LOAD'}
-        return self.execute_command('SCRIPT', 'LOAD', script, **options)
+        return self.execute_command('SCRIPT LOAD', script)
 
     def register_script(self, script):
         """
@@ -2007,8 +2074,10 @@ class PubSub(object):
     def _execute(self, connection, command, *args):
         try:
             return command(*args)
-        except ConnectionError:
+        except (ConnectionError, TimeoutError) as e:
             connection.disconnect()
+            if not connection.retry_on_timeout and isinstance(e, TimeoutError):
+                raise
             # Connect manually here. If the Redis server is down, this will
             # fail and raise a ConnectionError as desired.
             connection.connect()
@@ -2286,8 +2355,10 @@ class BasePipeline(object):
         try:
             conn.send_command(*args)
             return self.parse_response(conn, command_name, **options)
-        except ConnectionError:
+        except (ConnectionError, TimeoutError) as e:
             conn.disconnect()
+            if not conn.retry_on_timeout and isinstance(e, TimeoutError):
+                raise
             # if we're not already watching, we can safely retry the command
             try:
                 if not self.watching:
@@ -2453,12 +2524,14 @@ class BasePipeline(object):
 
         try:
             return execute(conn, stack, raise_on_error)
-        except ConnectionError:
+        except (ConnectionError, TimeoutError) as e:
             conn.disconnect()
+            if not conn.retry_on_timeout and isinstance(e, TimeoutError):
+                raise
             # if we were watching a variable, the watch is no longer valid
             # since this connection has died. raise a WatchError, which
             # indicates the user should retry his transaction. If this is more
-            # than a temporary failure, the WATCH that the user next issue
+            # than a temporary failure, the WATCH that the user next issues
             # will fail, propegating the real ConnectionError
             if self.watching:
                 raise WatchError("A ConnectionError occured on while watching "
@@ -2524,95 +2597,3 @@ class Script(object):
             # that created this instance?
             self.sha = client.script_load(self.script)
             return client.evalsha(self.sha, len(keys), *args)
-
-
-class LockError(RedisError):
-    "Errors thrown from the Lock"
-    pass
-
-
-class Lock(object):
-    """
-    A shared, distributed Lock. Using Redis for locking allows the Lock
-    to be shared across processes and/or machines.
-
-    It's left to the user to resolve deadlock issues and make sure
-    multiple clients play nicely together.
-    """
-
-    LOCK_FOREVER = float(2 ** 31 + 1)  # 1 past max unix time
-
-    def __init__(self, redis, name, timeout=None, sleep=0.1):
-        """
-        Create a new Lock instnace named ``name`` using the Redis client
-        supplied by ``redis``.
-
-        ``timeout`` indicates a maximum life for the lock.
-        By default, it will remain locked until release() is called.
-
-        ``sleep`` indicates the amount of time to sleep per loop iteration
-        when the lock is in blocking mode and another client is currently
-        holding the lock.
-
-        Note: If using ``timeout``, you should make sure all the hosts
-        that are running clients have their time synchronized with a network
-        time service like ntp.
-        """
-        self.redis = redis
-        self.name = name
-        self.acquired_until = None
-        self.timeout = timeout
-        self.sleep = sleep
-        if self.timeout and self.sleep > self.timeout:
-            raise LockError("'sleep' must be less than 'timeout'")
-
-    def __enter__(self):
-        return self.acquire()
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.release()
-
-    def acquire(self, blocking=True):
-        """
-        Use Redis to hold a shared, distributed lock named ``name``.
-        Returns True once the lock is acquired.
-
-        If ``blocking`` is False, always return immediately. If the lock
-        was acquired, return True, otherwise return False.
-        """
-        sleep = self.sleep
-        timeout = self.timeout
-        while 1:
-            unixtime = mod_time.time()
-            if timeout:
-                timeout_at = unixtime + timeout
-            else:
-                timeout_at = Lock.LOCK_FOREVER
-            timeout_at = float(timeout_at)
-            if self.redis.setnx(self.name, timeout_at):
-                self.acquired_until = timeout_at
-                return True
-            # We want blocking, but didn't acquire the lock
-            # check to see if the current lock is expired
-            existing = float(self.redis.get(self.name) or 1)
-            if existing < unixtime:
-                # the previous lock is expired, attempt to overwrite it
-                existing = float(self.redis.getset(self.name, timeout_at) or 1)
-                if existing < unixtime:
-                    # we successfully acquired the lock
-                    self.acquired_until = timeout_at
-                    return True
-            if not blocking:
-                return False
-            mod_time.sleep(sleep)
-
-    def release(self):
-        "Releases the already acquired lock"
-        if self.acquired_until is None:
-            raise ValueError("Cannot release an unlocked lock")
-        existing = float(self.redis.get(self.name) or 1)
-        # if the lock time is in the future, delete the lock
-        delete_lock = existing >= self.acquired_until
-        self.acquired_until = None
-        if delete_lock:
-            self.redis.delete(self.name)
