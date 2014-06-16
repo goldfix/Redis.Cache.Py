@@ -30,7 +30,7 @@ import zlib
 from redis.cache.errors import NotProvidedError
 import pickle
 import datetime
-from redis.cache import errors
+from redis.cache import errors, config
 
 
 _COMPRESS = 1
@@ -41,6 +41,53 @@ _DESERIALIZE = 4
 
 _NO_EXPIRATION = datetime.timedelta(hours=00, minutes=00, seconds=00)
 _No_TTL = "ND"
+
+
+def _ConvertObjToRedisValue(value):
+    if(value is None):
+        raise errors.ArgumentError("Parameter is invalid (value)")
+    
+    result = value
+    if( (type(value) is int) or (type(value) is float) or (type(value) is long) or (type(value) is complex) ):
+        pass
+    elif( (type(value) is str) or (type(value) is unicode) ):
+        if (config.UseCompression):
+            result = _Deflate(result, _COMPRESS) 
+        else:
+            pass        
+    else:
+        if (config.UseCompression):
+            result = _Serialize(result, _SERIALIZE)
+            result = _Deflate(result, _COMPRESS) 
+        else:
+            result = _Serialize(result, _SERIALIZE)
+
+    return result    
+
+
+def _ConvertRedisValueToObject(value, t):
+    if(value is None or t is None):
+        raise errors.ArgumentError("Parameter is invalid (value or t)")
+    
+    result = value
+    if( (t is int) or (t is float) or (t is long) or (t is complex) ):
+        pass
+    elif( (t is str) or (t is unicode) ):
+        if (config.UseCompression):
+            result = _Deflate(result, _DECOMPRESS) 
+        else:
+            pass        
+    else:
+        if (config.UseCompression):
+            result = _Deflate(result, _DECOMPRESS) 
+            result = _Serialize(result, _DESERIALIZE)
+        else:
+            result = _Serialize(result, _DESERIALIZE)
+
+    return result   
+
+
+
 
 def _Deflate(source_bytes, type_operation):
     if (type_operation==_COMPRESS):

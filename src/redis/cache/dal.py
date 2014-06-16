@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
 
 import redis
-from redis.cache import config, errors
+from redis.cache import config, errors, utilities
 
 
 class _RedisDal(object):
@@ -101,6 +101,7 @@ class _RedisDal(object):
             raise errors.ArgumentError("Parameter is invalid (key or value)")
 
         try:
+            #value = utilities._ConvertObjToRedisValue(value)    #TODO
             result = self._db.rpush(key, value)
             return result 
         except (Exception):
@@ -152,6 +153,7 @@ class _RedisDal(object):
             if(val is None or len(val)==0):
                 result = None
             else:
+                #val = utilities._ConvertRedisValueToObject(value, t)     #TODO
                 result = (val[0], val[1])
             return result 
         except (Exception):
