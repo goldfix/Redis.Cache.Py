@@ -48,7 +48,7 @@ def _ConvertObjToRedisValue(value):
         raise errors.ArgumentError("Parameter is invalid (value)")
     
     result = value
-    if( (type(value) is int) or (type(value) is float) or (type(value) is long) or (type(value) is complex) ):
+    if( (type(value) is int) or (type(value) is float) or (type(value) is long) or (type(value) is complex) or (type(value) is bool) ):
         pass
     elif( (type(value) is str) or (type(value) is unicode) ):
         if (config.UseCompression):
@@ -70,7 +70,7 @@ def _ConvertRedisValueToObject(value, t):
         raise errors.ArgumentError("Parameter is invalid (value or t)")
     
     result = value
-    if( (t is int) or (t is float) or (t is long) or (t is complex) ):
+    if( (t is int) or (t is float) or (t is long) or (t is complex) or (t is bool) ):
         pass
     elif( (t is str) or (t is unicode) ):
         if (config.UseCompression):
