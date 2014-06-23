@@ -111,7 +111,7 @@ class _RedisDal(object):
 
         pass
 
-    def UpdateTTL_ListItem(self, key, ttl):
+    def UpdateTTL_Item(self, key, ttl):
         if( key is None or str(key).strip() == "" or ttl is None or str(ttl).strip() == ""):
             raise errors.ArgumentError("Parameter is invalid (key or value)")
 

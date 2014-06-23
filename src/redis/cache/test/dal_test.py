@@ -79,7 +79,7 @@ class Test(TestCase):
         ttl = utilities._TTLSerialize(ttlSLI, ttlABS, datetime.datetime.max)
         
         dal._RedisDal().SetTTL("key456", ttlSLI)
-        dal._RedisDal().UpdateTTL_ListItem("key456", ttl)
+        dal._RedisDal().UpdateTTL_Item("key456", ttl)
         result = dal._RedisDal().GetListItem("key456")
         
         self.assertTrue(dal._RedisDal()._db.ttl("key456"), 10)
@@ -90,7 +90,7 @@ class Test(TestCase):
         ttlABS = config.DefaultAbsoluteExpiration
         ttl = utilities._TTLSerialize(ttlSLI, ttlABS, datetime.datetime.max)
         
-        dal._RedisDal().UpdateTTL_ListItem("key456", ttl)
+        dal._RedisDal().UpdateTTL_Item("key456", ttl)
         dal._RedisDal().DeleteTTL("key456")
         
         result = dal._RedisDal().GetListItem("key456")

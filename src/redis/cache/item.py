@@ -183,7 +183,7 @@ class _ManagementItemsCache(object):
                 # Update SLI TTL on Redis...
                 if(ttl_Dt[0] != datetime.datetime.max):
                     ttl = utilities._TTLSerialize(ttl_Ts[0], ttl_Ts[1], ttl_Dt[1])
-                    _dal.UpdateTTL_ListItem(key, ttl)
+                    _dal.UpdateTTL_Item(key, ttl)
                     _dal.SetTTL(key, ttl_Ts[0])
                 else:
                     pass
