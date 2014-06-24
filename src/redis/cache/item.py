@@ -25,8 +25,54 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
+
 from redis.cache import config, utilities, errors, dal
 import datetime
+
+
+
+class ItemCacheInfo(object):
+    
+    def __init__(self):
+        self.SlidingExpiration_TS = config.DefaultSlidingExpiration
+        self.AbsoluteExpiration_TS = config.DefaultAbsoluteExpiration
+        self.SlidingExpiration_DT = datetime.datetime.max
+        self.AbsoluteExpiration_DT = datetime.datetime.max
+        self.StatusItem = utilities._StatusItem_None
+        self.Data = None
+        self.Serialized_TTL = None
+        self.Serialized_Data = None
+        
+    def SerializeInfo(self):
+        self.StatusItem = utilities._StatusItem_None
+        result = utilities._ConvertObjToRedisValue(self.Data)
+        
+        self.Serialized_Data = result[0]
+        self.StatusItem = result[1]
+        
+        self.UpdateSerialized_TTL()
+        pass
+    
+    def DeSerializeInfo(self):
+        ttl_Dt = utilities._TTL_DT_DeSerialize(self.Serialized_TTL)
+        ttl_Ts = utilities._TTL_TS_DeSerialize(self.Serialized_TTL)
+        
+        self.SlidingExpiration_TS = ttl_Ts[0];
+        self.AbsoluteExpiration_TS = ttl_Ts[1];
+        self.SlidingExpiration_DT = ttl_Dt[0];
+        self.AbsoluteExpiration_DT = ttl_Dt[1];
+        
+        self.StatusItem = utilities.StatusItemDeSerialize(self.Serialized_TTL);
+        
+        self.Data = utilities._ConvertRedisValueToObject(self.Serialized_Data, self.StatusItem)
+        pass
+    
+    def UpdateSerialized_TTL(self):
+        self.Serialized_TTL = utilities._TTLSerialize(self.SlidingExpiration_TS, self.AbsoluteExpiration_TS, self.AbsoluteExpiration_DT, self.StatusItem)
+        pass
+
+
+
 
 
 class ItemCache(object):

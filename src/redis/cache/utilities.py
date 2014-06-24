@@ -31,6 +31,7 @@ from redis.cache.errors import NotProvidedError
 import pickle
 import datetime
 from redis.cache import errors, config
+from locale import str
 
 
 _COMPRESS = 1
@@ -42,50 +43,56 @@ _DESERIALIZE = 4
 _NO_EXPIRATION = datetime.timedelta(hours=00, minutes=00, seconds=00)
 _No_TTL = "ND"
 
+_StatusItem_None = 0
+_StatusItem_Compressed = 1
+_StatusItem_Serialized = 2
+
+def StatusItemDeSerialize(v):
+    result = str(v).split("|")[4]
+    return result
+
 
 def _ConvertObjToRedisValue(value):
     if(value is None):
         raise errors.ArgumentError("Parameter is invalid (value)")
     
     result = value
+    statusItem = _StatusItem_None
     if( (type(value) is int) or (type(value) is float) or (type(value) is long) or (type(value) is complex) or (type(value) is bool) ):
         pass
     elif( (type(value) is str) or (type(value) is unicode) ):
         if (config.UseCompression):
-            result = _Deflate(result, _COMPRESS) 
+            result = _Deflate(result, _COMPRESS)
+            statusItem = _StatusItem_Compressed 
         else:
             pass        
     else:
         if (config.UseCompression):
             result = _Serialize(result, _SERIALIZE)
-            result = _Deflate(result, _COMPRESS) 
+            result = _Deflate(result, _COMPRESS)
+            statusItem = _StatusItem_Compressed + _StatusItem_Serialized 
         else:
             result = _Serialize(result, _SERIALIZE)
+            statusItem = _StatusItem_Serialized
 
-    return result    
+    return result, statusItem 
 
 
-def _ConvertRedisValueToObject(value, t):
-    if(value is None or t is None):
-        raise errors.ArgumentError("Parameter is invalid (value or t)")
+def _ConvertRedisValueToObject(value, statusItem):
+    if(value is None or statusItem is None):
+        raise errors.ArgumentError("Parameter is invalid (value or statusItem)")
     
     result = value
-    if( (t is int) or (t is float) or (t is long) or (t is complex) or (t is bool) ):
+    if((statusItem & _StatusItem_None)==_StatusItem_None):
         pass
-    elif( (t is str) or (t is unicode) ):
-        if (config.UseCompression):
-            result = _Deflate(result, _DECOMPRESS) 
-        else:
-            pass        
-    else:
-        if (config.UseCompression):
-            result = _Deflate(result, _DECOMPRESS) 
-            result = _Serialize(result, _DESERIALIZE)
-        else:
-            result = _Serialize(result, _DESERIALIZE)
-
-    return result   
-
+    if((statusItem & _StatusItem_Compressed)==_StatusItem_Compressed):
+        result = _Deflate(result, _DECOMPRESS)
+        pass
+    if((statusItem & _StatusItem_Serialized)==_StatusItem_Serialized):
+        result = _Serialize(result, _DESERIALIZE)
+        pass
+    
+    return result
 
 
 
@@ -123,7 +130,7 @@ def _Serialize(data, type_operation):
     pass
 
 
-def _TTLSerialize(ttlSLI, ttlABS, forceUpdateDtABS):
+def _TTLSerialize(ttlSLI, ttlABS, forceUpdateDtABS, statusItem):
     
     dtResult = (datetime.datetime.utcnow() + ttlSLI)
     str_dtSLI = dtResult.strftime("%Y%m%dT%H%M%S")
@@ -144,7 +151,7 @@ def _TTLSerialize(ttlSLI, ttlABS, forceUpdateDtABS):
     if(forceUpdateDtABS != datetime.datetime.max):
         str_dtABS = forceUpdateDtABS.strftime("%Y%m%dT%H%M%S")
 
-    strResult = str_dtSLI + "|" + str_tsSLI + "|" + str_dtABS + "|" + str_tsABS
+    strResult = str_dtSLI + "|" + str_tsSLI + "|" + str_dtABS + "|" + str_tsABS + "|" + str(statusItem)
  
     return strResult
  
